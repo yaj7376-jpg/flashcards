@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weihnachten — Flash Cards</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.97.0/dist/umd/supabase.min.js"></script>
+  <style>
+    :root {
+      --primary:       #2a7d6e;
+      --primary-dark:  #1f6057;
+      --primary-light: #3aaf9c;
+      --primary-pale:  #eaf5f3;
+      --accent:        #1a5f7a;
+      --text:          #1e2d2b;
+      --muted:         #6b8480;
+      --border:        #cce3de;
+      --white:         #ffffff;
+      --neutral-bg:    #f7faf9;
+      --radius:        14px;
+      --de-color:      #1a5f7a;
+      --ru-color:      #2a7d6e;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 18px;
+      background: var(--neutral-bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── User bar ── */
+    #user-bar {
+      background: var(--primary-dark);
+      color: var(--white);
+      padding: 10px 28px;
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.82rem;
+    }
+    #logout-btn {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: var(--white);
+      border-radius: 6px;
+      padding: 4px 14px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    #logout-btn:hover { background: rgba(255,255,255,0.25); }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--primary) 100%);
+      color: var(--white);
+      padding: 28px 24px 22px;
+      text-align: center;
+    }
+    header h1 { font-size: 1.7rem; font-weight: 700; }
+    header p  { margin-top: 5px; opacity: 0.85; font-size: 0.95rem; }
+
+    /* ── Main ── */
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 20px 48px;
+      gap: 24px;
+    }
+
+    /* ── Mode toggle ── */
+    .mode-toggle {
+      display: flex;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: 4px;
+      gap: 4px;
+    }
+    .mode-btn {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 99px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .mode-btn.active {
+      background: var(--primary);
+      color: var(--white);
+    }
+
+    /* ── Progress ── */
+    .progress-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      width: 100%;
+      max-width: 640px;
+    }
+    .progress-bar-bg {
+      flex: 1;
+      height: 6px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--primary-light);
+      border-radius: 99px;
+      transition: width 0.3s ease;
+    }
+    .progress-label { font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
+
+    /* ── Flip card ── */
+    .card-scene {
+      width: 100%;
+      max-width: 640px;
+      height: 320px;
+      perspective: 1200px;
+      cursor: pointer;
+    }
+    .card {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .card.flipped { transform: rotateY(180deg); }
+
+    .card-face {
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 36px 40px;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.09);
+      text-align: center;
+    }
+    .card-front {
+      background: var(--white);
+      border: 2px solid var(--border);
+    }
+    .card-back {
+      background: var(--primary-pale);
+      border: 2px solid var(--primary-light);
+      transform: rotateY(180deg);
+    }
+
+    .card-lang {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      opacity: 0.55;
+    }
+    .card-text {
+      font-size: 1.15rem;
+      line-height: 1.65;
+      color: var(--text);
+    }
+    .card-hint {
+      margin-top: 20px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .card.flipped .card-hint { display: none; }
+
+    /* ── Nav controls ── */
+    .nav-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .nav-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: var(--white);
+      color: var(--text);
+      font-size: 1.3rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .nav-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+    .nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+    #shuffle-btn {
+      padding: 10px 24px;
+      border-radius: 99px;
+      border: 2px solid var(--border);
+      background: var(--white);
+      color: var(--muted);
+      font-size: 0.88rem;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #shuffle-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* ── Auth overlay ── */
+    #auth-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--primary-pale);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .auth-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+    .auth-card h2 { font-size: 1.4rem; color: var(--primary-dark); margin-bottom: 6px; }
+    .auth-card p  { font-size: 0.9rem; color: var(--muted); margin-bottom: 24px; }
+    .auth-tabs { display: flex; margin-bottom: 24px; border-bottom: 2px solid var(--border); }
+    .auth-tab {
+      padding: 8px 20px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      background: none;
+      color: var(--muted);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .auth-tab.active { color: var(--primary-dark); border-bottom-color: var(--primary); }
+    .auth-field { margin-bottom: 16px; }
+    .auth-field label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 5px; }
+    .auth-field input {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 1rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .auth-field input:focus { border-color: var(--primary); }
+    .auth-submit {
+      width: 100%;
+      background: var(--primary);
+      color: var(--white);
+      border: none;
+      border-radius: 8px;
+      padding: 13px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.2s;
+      margin-top: 4px;
+    }
+    .auth-submit:hover { background: var(--primary-dark); }
+    .auth-submit:disabled { opacity: 0.6; cursor: default; }
+    .auth-message {
+      font-size: 0.85rem;
+      margin-top: 10px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      display: none;
+    }
+    .auth-message.error   { display: block; color: #1e3a5c; background: #eef2f8; }
+    .auth-message.success { display: block; color: var(--primary-dark); background: var(--primary-pale); }
+
+    @media (max-width: 560px) {
+      .card-scene { height: 260px; }
+      .card-face { padding: 24px 20px; }
+      .card-text { font-size: 1rem; }
+      header h1 { font-size: 1.3rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Auth overlay -->
+<div id="auth-overlay">
+  <div class="auth-card">
+    <h2>Flash Cards</h2>
+    <p>Sign in or create an account to begin.</p>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchTab('login')">Sign In</button>
+      <button class="auth-tab" onclick="switchTab('signup')">Sign Up</button>
+    </div>
+    <div class="auth-field">
+      <label>Email</label>
+      <input type="email" id="auth-email" placeholder="your@email.com"
+             onkeydown="if(event.key==='Enter') authSubmit()">
+    </div>
+    <div class="auth-field">
+      <label>Password</label>
+      <input type="password" id="auth-password" placeholder="••••••••"
+             onkeydown="if(event.key==='Enter') authSubmit()">
+    </div>
+    <button class="auth-submit" id="auth-btn" onclick="authSubmit()">Sign In</button>
+    <div class="auth-message" id="auth-msg"></div>
+  </div>
+</div>
+
+<!-- User bar -->
+<div id="user-bar">
+  <span id="user-email-label"></span>
+  <button id="logout-btn" onclick="logout()">Log out</button>
+</div>
+
+<header>
+  <h1>🎄 Weihnachten</h1>
+  <p>German ↔ Russian · 10 cards</p>
+</header>
+
+<main>
+
+  <!-- Mode toggle -->
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="mode-de-ru" onclick="setMode('de-ru')">🇩🇪 German → Russian 🇷🇺</button>
+    <button class="mode-btn"        id="mode-ru-de" onclick="setMode('ru-de')">🇷🇺 Russian → German 🇩🇪</button>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-row">
+    <div class="progress-bar-bg"><div class="progress-bar-fill" id="prog-fill"></div></div>
+    <span class="progress-label" id="prog-label">1 / 10</span>
+  </div>
+
+  <!-- Flip card -->
+  <div class="card-scene" onclick="flipCard()">
+    <div class="card" id="card">
+      <div class="card-face card-front">
+        <div class="card-lang" id="front-lang">DEUTSCH</div>
+        <div class="card-text" id="front-text"></div>
+        <div class="card-hint">Tap to reveal translation</div>
+      </div>
+      <div class="card-face card-back">
+        <div class="card-lang" id="back-lang">РУССКИЙ</div>
+        <div class="card-text" id="back-text"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="nav-row">
+    <button class="nav-btn" id="prev-btn" onclick="navigate(-1)" disabled>←</button>
+    <button id="shuffle-btn" onclick="shuffle()">🔀 Shuffle</button>
+    <button class="nav-btn" id="next-btn" onclick="navigate(1)">→</button>
+  </div>
+
+</main>
+
+<script>
+// ─── Supabase ───────────────────────────────────
+const SUPABASE_URL = 'https://knbqhsusbgbnsdetrqwx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuYnFoc3VzYmdibnNkZXRycXd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3MTI2NTQsImV4cCI6MjA4NzI4ODY1NH0.nI_U9Zce6bkyic_fDEuSnVU1grOAJluAJecLqOONTrw';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ─── Cards data ─────────────────────────────────
+const cards = [
+  {
+    de: "Weihnachtswerbung kann starke Gefühle, zum Beispiel Freude oder Nostalgie, hervorrufen / wecken.",
+    ru: "Рождественская реклама может вызывать сильные эмоции, например радость или ностальгию."
+  },
+  {
+    de: "Geschichten über einsame Menschen an Weihnachten berühren mich oft sehr, weil sie mir zeigen, wie wichtig Nähe ist.",
+    ru: "Истории об одиноких людях на Рождество часто очень трогают меня, потому что они показывают мне, насколько важна близость."
+  },
+  {
+    de: "Gemeinsame Erlebnisse und offene Gespräche können Beziehungen stärken und Familien näher zusammenbringen.",
+    ru: "Совместные впечатления и откровенные разговоры могут укрепить отношения и сблизить членов семьи."
+  },
+  {
+    de: "Manche Menschen geraten in einen richtigen Kaufrausch und kaufen viel mehr, als sie brauchen.",
+    ru: "Некоторые люди впадают в настоящий шопинг-марафон и покупают гораздо больше, чем им нужно."
+  },
+  {
+    de: "Wenn wir jedes Jahr dieselben Rituale haben, können wir unsere Traditionen festigen.",
+    ru: "Если мы каждый год проводим одни и те же ритуалы, мы можем укрепить наши традиции."
+  },
+  {
+    de: "Ein besonderer Geruch oder ein Lied kann so stark im Gedächtnis verankert sein, dass wir uns noch nach vielen Jahren daran erinnern.",
+    ru: "Особый запах или песня могут настолько прочно запечатлеться в памяти, что мы помним их даже спустя много лет."
+  },
+  {
+    de: "Zu viele Termine, Geschenke und Erwartungen führen leicht zu Überforderung.",
+    ru: "Слишком много встреч, подарков и ожиданий легко приводят к перегрузке."
+  },
+  {
+    de: "Wenn wir weniger an Geld und Geschenke denken und den Fokus auf das Wesentliche legen, können wir die Feiertage mehr genießen.",
+    ru: "Если мы будем меньше думать о деньгах и подарках и сосредоточимся на самом главном, то сможем больше наслаждаться праздниками."
+  },
+  {
+    de: "Kleine Gesten, wie ein ehrliches „Danke", können zeigen, dass wir andere wirklich wertschätzen.",
+    ru: "Небольшие жесты, такие как искреннее «спасибо», могут показать, что мы действительно ценим других людей."
+  },
+  {
+    de: "In der Weihnachtszeit verändert sich oft das Konsumverhalten: Viele Menschen geben mehr Geld aus als sonst.",
+    ru: "В рождественский период часто меняется потребительское поведение: многие люди тратят больше денег, чем обычно."
+  },
+];
+
+// ─── State ──────────────────────────────────────
+let deck    = [...Array(cards.length).keys()]; // indices
+let current = 0;
+let mode    = 'de-ru'; // 'de-ru' or 'ru-de'
+let flipped = false;
+
+// ─── Auth ───────────────────────────────────────
+let authMode = 'login';
+
+function switchTab(m) {
+  authMode = m;
+  document.querySelectorAll('.auth-tab').forEach((t, i) => {
+    t.classList.toggle('active', (m === 'login' && i === 0) || (m === 'signup' && i === 1));
+  });
+  document.getElementById('auth-btn').textContent = m === 'login' ? 'Sign In' : 'Create Account';
+  const msg = document.getElementById('auth-msg');
+  msg.className = 'auth-message';
+  msg.textContent = '';
+}
+
+async function authSubmit() {
+  const email    = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const btn      = document.getElementById('auth-btn');
+  const msg      = document.getElementById('auth-msg');
+  if (!email || !password) return;
+  btn.disabled = true;
+  msg.className = 'auth-message';
+
+  let error;
+  if (authMode === 'login') {
+    ({ error } = await sb.auth.signInWithPassword({ email, password }));
+  } else {
+    ({ error } = await sb.auth.signUp({ email, password }));
+    if (!error) {
+      msg.textContent = 'Account created! You can now sign in.';
+      msg.className = 'auth-message success';
+      btn.disabled = false;
+      return;
+    }
+  }
+  if (error) {
+    msg.textContent = error.message;
+    msg.className = 'auth-message error';
+  }
+  btn.disabled = false;
+}
+
+function logout() {
+  Object.keys(localStorage).forEach(k => { if (k.startsWith('sb-')) localStorage.removeItem(k); });
+  window.location.reload();
+}
+
+sb.auth.onAuthStateChange((event, session) => {
+  if (!session) {
+    document.getElementById('auth-overlay').style.display = 'flex';
+    document.getElementById('user-bar').style.display = 'none';
+    return;
+  }
+  document.getElementById('auth-overlay').style.display = 'none';
+  document.getElementById('user-bar').style.display = 'flex';
+  document.getElementById('user-email-label').textContent = session.user.email;
+  renderCard();
+});
+
+// ─── Card logic ──────────────────────────────────
+function setMode(m) {
+  mode = m;
+  document.getElementById('mode-de-ru').classList.toggle('active', m === 'de-ru');
+  document.getElementById('mode-ru-de').classList.toggle('active', m === 'ru-de');
+  current = 0;
+  deck = [...Array(cards.length).keys()];
+  renderCard(false);
+}
+
+function renderCard(keepFlip = false) {
+  const card     = document.getElementById('card');
+  const idx      = deck[current];
+  const cardData = cards[idx];
+
+  if (!keepFlip) {
+    flipped = false;
+    card.classList.remove('flipped');
+  }
+
+  const frontKey = mode === 'de-ru' ? 'de' : 'ru';
+  const backKey  = mode === 'de-ru' ? 'ru' : 'de';
+  const frontLang = mode === 'de-ru' ? 'DEUTSCH' : 'РУССКИЙ';
+  const backLang  = mode === 'de-ru' ? 'РУССКИЙ' : 'DEUTSCH';
+
+  document.getElementById('front-lang').textContent = frontLang;
+  document.getElementById('back-lang').textContent  = backLang;
+  document.getElementById('front-text').textContent = cardData[frontKey];
+  document.getElementById('back-text').textContent  = cardData[backKey];
+
+  // Progress
+  const pct = ((current + 1) / deck.length) * 100;
+  document.getElementById('prog-fill').style.width = pct + '%';
+  document.getElementById('prog-label').textContent = `${current + 1} / ${deck.length}`;
+
+  // Nav buttons
+  document.getElementById('prev-btn').disabled = current === 0;
+  document.getElementById('next-btn').disabled = current === deck.length - 1;
+}
+
+function flipCard() {
+  flipped = !flipped;
+  document.getElementById('card').classList.toggle('flipped', flipped);
+}
+
+function navigate(dir) {
+  current = Math.max(0, Math.min(deck.length - 1, current + dir));
+  renderCard();
+}
+
+function shuffle() {
+  // Fisher-Yates
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  current = 0;
+  renderCard();
+}
+</script>
+</body>
+</html>
