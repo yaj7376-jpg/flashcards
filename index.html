@@ -383,11 +383,36 @@
 </main>
 
 <script>
-// ─── Supabase ───────────────────────────────────
+// ─── Supabase (raw fetch only — JS client hangs with sb_publishable_ keys) ───
 const SUPABASE_URL = 'https://knbqhsusbgbnsdetrqwx.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuYnFoc3VzYmdibnNkZXRycXd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3MTI2NTQsImV4cCI6MjA4NzI4ODY1NH0.nI_U9Zce6bkyic_fDEuSnVU1grOAJluAJecLqOONTrw';
-const { createClient } = supabase;
-const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+const SESSION_KEY = 'et_session';
+
+let currentAccessToken = null;
+
+function saveSession(data) {
+  const sess = {
+    access_token:  data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at:    Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
+    user:          data.user,
+  };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(sess));
+  return sess;
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const sess = JSON.parse(raw);
+    if (sess.expires_at && sess.expires_at * 1000 < Date.now()) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return sess;
+  } catch (e) { return null; }
+}
 
 // ─── Cards data ─────────────────────────────────
 const cards = [
@@ -461,42 +486,65 @@ async function authSubmit() {
   if (!email || !password) return;
   btn.disabled = true;
   msg.className = 'auth-message';
+  msg.textContent = '';
 
-  let error;
   if (authMode === 'login') {
-    ({ error } = await sb.auth.signInWithPassword({ email, password }));
-  } else {
-    ({ error } = await sb.auth.signUp({ email, password }));
-    if (!error) {
-      msg.textContent = 'Account created! You can now sign in.';
-      msg.className = 'auth-message success';
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      msg.textContent = data.error_description || data.msg || 'Sign in failed. Please check your email and password.';
+      msg.className = 'auth-message error';
       btn.disabled = false;
       return;
     }
-  }
-  if (error) {
-    msg.textContent = error.message;
-    msg.className = 'auth-message error';
+    const sess = saveSession(data);
+    onSignedIn(sess);
+  } else {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      msg.textContent = data.error_description || data.msg || 'Sign up failed.';
+      msg.className = 'auth-message error';
+      btn.disabled = false;
+      return;
+    }
+    msg.textContent = 'Account created! You can now sign in.';
+    msg.className = 'auth-message success';
   }
   btn.disabled = false;
 }
 
 function logout() {
-  Object.keys(localStorage).forEach(k => { if (k.startsWith('sb-')) localStorage.removeItem(k); });
+  localStorage.removeItem(SESSION_KEY);
   window.location.reload();
 }
 
-sb.auth.onAuthStateChange((event, session) => {
-  if (!session) {
-    document.getElementById('auth-overlay').style.display = 'flex';
-    document.getElementById('user-bar').style.display = 'none';
-    return;
-  }
+function onSignedIn(sess) {
+  currentAccessToken = sess.access_token;
   document.getElementById('auth-overlay').style.display = 'none';
   document.getElementById('user-bar').style.display = 'flex';
-  document.getElementById('user-email-label').textContent = session.user.email;
+  document.getElementById('user-email-label').textContent = sess.user.email;
   renderCard();
-});
+}
+
+// Check for existing session on page load
+(function initAuth() {
+  const sess = loadSession();
+  if (sess) {
+    onSignedIn(sess);
+  } else {
+    document.getElementById('auth-overlay').style.display = 'flex';
+    document.getElementById('user-bar').style.display = 'none';
+  }
+})();
 
 // ─── Card logic ──────────────────────────────────
 function setMode(m) {
